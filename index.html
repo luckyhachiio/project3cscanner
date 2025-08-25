@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Project 3C’s</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+</head>
+<body>
+
+  <!-- Background Music -->
+  <iframe width="0" height="0" src="https://www.youtube.com/embed/f9cViIsTarw?autoplay=1&loop=1&playlist=f9cViIsTarw" frameborder="0" allow="autoplay"></iframe>
+
+  <!-- Header -->
+  <header>
+    <img src="logo.png" alt="Logo" class="logo">
+    <h1>Project 3C’s</h1>
+    <h2>Through Knowledge and Life We Protect What’s Right</h2>
+    <h3>Sillawit National High School</h3>
+  </header>
+
+  <!-- Upload Section -->
+  <section class="uploader">
+    <h2>Upload Your Scanned Evaluation Sheet</h2>
+    <input type="file" id="fileInput" accept="image/*,.pdf"/>
+    <br><br>
+    <label>Section: <input type="text" id="section" placeholder="Diamond"/></label>
+    <label>Day: <input type="number" id="day" min="1" max="5"/></label>
+    <br><br>
+    <button onclick="processFile()">Process</button>
+    <button onclick="exportExcel()">Export to Excel</button>
+  </section>
+
+  <!-- Output -->
+  <section>
+    <h2>Extracted Results</h2>
+    <pre id="output">No data yet.</pre>
+  </section>
+
+  <footer>
+    <p>&copy; 2025 Youth for Environment in Schools Organization – Sillawit NHS</p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
