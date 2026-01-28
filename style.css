@@ -101,3 +101,18 @@ footer {
   padding: 10px;
   margin-top: 20px;
 }
+
+.eye-wrap {
+  display:inline-flex;
+  align-items:center;
+}
+.eye-wrap button {
+  margin-left:5px;
+  padding:5px;
+}
+
+.avg-row {
+  background:#dff6f0;
+  font-weight:bold;
+}
+
