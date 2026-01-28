@@ -1,188 +1,261 @@
+/**************** GLOBAL STATE ****************/
 let extractedText = "";
+let comparisonData = { OLD: {}, NEW: {} };
+let EXPORT = null;
 
-/* ========= MUSIC: keep working exactly like before ========= */
+/**************** MUSIC ****************/
 function toggleMute() {
   const audio = document.getElementById("bg-music");
   const btn = document.getElementById("muteBtn");
   if (!audio) return;
 
-  if (audio.muted) {
-    audio.muted = false;
-    btn.textContent = "🔊 Mute";
-    audio.play().catch(() => {/* ignore */});
-  } else {
-    audio.muted = true;
-    btn.textContent = "🔇 Unmute";
+  audio.muted = !audio.muted;
+  btn.textContent = audio.muted ? "🔇 Unmute" : "🔊 Mute";
+
+  if (!audio.muted) {
+    audio.play().catch(()=>{});
   }
 }
 
-// ensure audio starts after first user gesture (browser policy)
-document.addEventListener("click", () => {
-  const audio = document.getElementById("bg-music");
-  if (audio && audio.paused) {
-    audio.play().catch(() => {/* ignore */});
-  }
-}, { once: true });
-/* ========================================================== */
+/**************** EYE LOCK ****************/
+function toggleEye() {
+  const i = document.getElementById("evaluator");
+  i.type = i.type === "password" ? "text" : "password";
+}
 
-/* ===== helpers for scoring/formatting ===== */
-const scoreToPercent = (s) => Math.max(1, Math.min(5, Number(s) || 1)) * 5;
-const avg = (arr) => arr.reduce((a,b)=>a+b,0) / (arr.length || 1);
+/**************** HELPERS ****************/
+const scoreToPercent = s => s * 5;
+const mean = arr => arr.reduce((a,b)=>a+b,0) / (arr.length || 1);
+const nowDate = () => new Date().toLocaleDateString();
+const nowTime = () => new Date().toLocaleTimeString();
+const randScore = () => Math.floor(Math.random() * 2) + 4;
+const randPick = arr => arr[Math.floor(Math.random() * arr.length)];
 
-/* ====== main fixed criteria (scores here are the example you gave) ======
-   You can change the numbers (1–5) below per scan if needed; the % is computed.
-*/
-const CRITERIA_DEF = {
+/**************** CHECKMARK (PHOTO SAFE) ****************/
+function hasCheckmark(line) {
+  return /✓|✔|☑|√|\[x\]|\bx\b|\bv\b/i.test(line);
+}
+
+/**************** CRITERIA ****************/
+const OLD = {
   "Room Cleanliness": [
-    ["Desks are clean and organized", 5],
-    ["Classroom floor is clean and free of trash", 5],
-    ["Windows are properly cleaned", 5],
-    ["Whiteboard/blackboard is clean after use", 5],
-    ["Comfort room is clean and maintained", 2],
-    ["Cleaning tools are stored properly", 5],
+    "Desks are clean and organized",
+    "Floor is clean",
+    "Windows are clean",
+    "Board is clean",
+    "Comfort room is clean",
+    "Tools are stored properly"
   ],
   "Area Cleanliness": [
-    ["Pathways to classroom are free of litter", 5],
-    ["Hallways and corridors are clean", 5],
-    ["Outdoor trash bins are not overflowing", 5],
-    ["Plants and outdoor areas are maintained", 5],
-    ["Classroom exterior is clean", 5],
+    "Pathways are clean",
+    "Hallways are clean",
+    "Trash bins not overflowing",
+    "Plants maintained",
+    "Exterior clean"
   ],
   "Waste Segregation": [
-    ["Separate bins for recyclable, biodegradable, non-biodegradable", 5],
-    ["Waste is sorted into correct bins", 5],
-    ["Trash bins are emptied regularly", 5],
-  ],
+    "Bins available",
+    "Waste sorted",
+    "Bins emptied"
+  ]
 };
 
-/* build a fast list of phrases so we don't leak criteria into notes */
-const CRITERIA_PHRASES = Object.values(CRITERIA_DEF)
-  .flat()
-  .map(([name]) => name.toLowerCase());
+const NEW = {
+  "Room Cleanliness": [
+    "Floor polished",
+    "Furniture organized",
+    "Walls clean",
+    "Fans dust-free",
+    "Comfort room odor-free"
+  ],
+  "Area Cleanliness": [
+    "Front area clean",
+    "Back area clean",
+    "Walkways unobstructed",
+    "Plants maintained",
+    "Planters clean"
+  ],
+  "Waste Management": [
+    "Labeled bins",
+    "Bins with lids",
+    "Proper segregation",
+    "Segregation maintained",
+    "Disposed on schedule"
+  ],
+  "Discipline and Orderliness": [
+    "Students participate",
+    "Students cooperate",
+    "Materials returned",
+    "Cleaning on time",
+    "No distractions"
+  ]
+};
 
-/* ===== OCR + layout ===== */
+/**************** TOOL DETECTION ****************/
+function detectTool(text) {
+  const t = text.toLowerCase();
+  return t.includes("discipline") || t.includes("orderliness")
+    ? "NEW"
+    : "OLD";
+}
+
+/**************** AUTO SCORE ****************/
+function autoScore(text, criterion, tool) {
+  if (tool === "NEW") {
+    const lines = text.split(/\r?\n+/);
+    const found = lines.find(l =>
+      l.toLowerCase().includes(criterion.toLowerCase().slice(0, 12))
+    );
+
+    if (found && hasCheckmark(found)) return 5;
+    return 1;
+  }
+
+  // OLD TOOL (text-based fallback)
+  if (/excellent|very clean/i.test(text)) return 5;
+  if (/good|clean/i.test(text)) return 4;
+  if (/fair/i.test(text)) return 3;
+  if (/poor|dirty/i.test(text)) return 2;
+  return 4;
+}
+
+/**************** OCR PROCESS ****************/
 async function processFile() {
   const file = document.getElementById("fileInput").files[0];
-  const tbody = document.getElementById("resultsBody");
-  if (!file) { alert("Please upload an image or PDF first!"); return; }
+  if (!file) return alert("Please upload an image.");
 
-  tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;">⏳ Processing... please wait</td></tr>`;
+  document.getElementById("resultsBody").innerHTML =
+    `<tr><td colspan="6">⏳ Processing…</td></tr>`;
 
-  // OCR
   const { data } = await Tesseract.recognize(file, "eng");
-  extractedText = (data.text || "").trim();
+  extractedText = data.text || "";
+  buildFromText(extractedText, false);
+}
 
-  // Prepare fixed rows using the criteria + computed % equivalents
-  const categoryRows = {};
-  const categoryAverages = {};
+/**************** TEST MODE ****************/
+function runTest() {
+  const samples = [
+    "✓ Floor polished\n✓ Furniture organized\nWalls clean\n✓ Fans dust-free\nDiscipline",
+    "x Pathways are clean\nPlants maintained\nWaste segregation\nDiscipline",
+    "Clean classroom\nGood discipline\nStudents cooperate"
+  ];
+  buildFromText(randPick(samples), true);
+}
 
-  Object.entries(CRITERIA_DEF).forEach(([cat, rows]) => {
-    const computed = rows.map(([crit, score]) => {
-      const pct = scoreToPercent(score); // 1->5%, 2->10%, 3->15%, 4->20%, 5->25%
-      return { cat, crit, score, pct };
-    });
-    categoryRows[cat] = computed;
-    categoryAverages[cat] = avg(computed.map(r => r.pct));
-  });
+/**************** CORE BUILDER ****************/
+function buildFromText(text, isTest) {
+  const tool = detectTool(text);
+  const DEF = tool === "NEW" ? NEW : OLD;
 
-  // overall avg of room/area/waste (in % out of 25)
-  const rawOverall = avg([
-    categoryAverages["Room Cleanliness"],
-    categoryAverages["Area Cleanliness"],
-    categoryAverages["Waste Segregation"]
-  ]);
+  const section = document.getElementById("section").value || "N/A";
+  const day = document.getElementById("day").value || "N/A";
+  const evaluator = document.getElementById("evaluator").value || "Hidden";
 
-  // Discipline auto-calc: only 20% or 25%. Map from the overall average.
-  // If overall >= 22.5 -> 25% (score 5), else -> 20% (score 4)
-  const disciplineScore = rawOverall >= 22.5 ? 5 : 4;
-  const disciplinePercent = scoreToPercent(disciplineScore); // 20 or 25
-
-  // Extract ONLY the officer notes (Tagalog/English), no criteria/percents/etc.
-  const notes = (extractedText || "")
-    .split(/\r?\n+/)
-    .map(l => l.trim())
-    .filter(l => l.length > 0)
-    // must contain letters (keeps Tagalog/English)
-    .filter(l => /[A-Za-z\u00C0-\u024F\u1E00-\u1EFF]/.test(l))
-    // drop numeric/percent/structured lines
-    .filter(l => !/[0-9%]/.test(l))
-    // drop meta words that look like headings
-    .filter(l => !/(criteria|average|score|percent|section|category|room|area|waste|discipline)/i.test(l))
-    // drop anything that looks like our criteria phrases
-    .filter(l => !CRITERIA_PHRASES.some(p => l.toLowerCase().includes(p)))
-    // de-duplicate
-    .filter((v, i, a) => a.indexOf(v) === i)
-    // limit to a few important notes
-    .slice(0, 6)
-    .join("; ");
-
-  // render table
   let html = "";
-  ["Room Cleanliness", "Area Cleanliness", "Waste Segregation"].forEach(cat => {
-    categoryRows[cat].forEach(row => {
-      html += `<tr>
-        <td>${row.cat}</td>
-        <td>${row.crit}</td>
-        <td>${row.score}</td>
-        <td>${row.pct}%</td>
-        <td></td>
-      </tr>`;
-    });
-    html += `<tr class="avg-row">
-      <td colspan="5" style="text-align:center;font-weight:700;">Average %: ${categoryAverages[cat].toFixed(1)}%</td>
-    </tr>`;
-  });
+  let stats = [];
+  comparisonData[tool] = {};
 
-  // Discipline row (notes go here only)
-  html += `<tr>
-    <td>Discipline</td>
-    <td>Discipline (auto-calculated from Room/Area/Waste averages)</td>
-    <td>${disciplineScore}</td>
-    <td>${disciplinePercent}%</td>
-    <td>${notes || ""}</td>
-  </tr>
-  <tr class="avg-row">
-    <td colspan="5" style="text-align:center;font-weight:700;">Average %: ${disciplinePercent.toFixed(1)}%</td>
-  </tr>`;
+  Object.entries(DEF).forEach(([cat, items]) => {
+    let percents = [];
+
+    items.forEach(c => {
+      const score = isTest ? randScore() : autoScore(text, c, tool);
+      const pct = scoreToPercent(score);
+      percents.push(pct);
+
+      html += `
+        <tr>
+          <td>${tool}</td>
+          <td>${cat}</td>
+          <td>${c}</td>
+          <td>${score}</td>
+          <td>${pct}%</td>
+          <td>${isTest ? "TEST DATA" : ""}</td>
+        </tr>`;
+    });
+
+    const m = mean(percents);
+    comparisonData[tool][cat] = m;
+
+    html += `
+      <tr class="avg-row">
+        <td colspan="6"><b>${cat} Mean:</b> ${m.toFixed(2)}%</td>
+      </tr>`;
+
+    stats.push([section, day, tool, cat, m.toFixed(2)]);
+  });
 
   document.getElementById("resultsBody").innerHTML = html;
+  drawChart();
+  buildExport(section, day, evaluator, tool, stats, isTest);
 }
 
-/* ===== Excel export: exports exactly what is displayed ===== */
+/**************** CHART ****************/
+function drawChart() {
+  const ctx = document.getElementById("comparisonChart");
+  if (!ctx) return;
+
+  if (window.chart) window.chart.destroy();
+
+  const labels = Array.from(new Set([
+    ...Object.keys(comparisonData.OLD || {}),
+    ...Object.keys(comparisonData.NEW || {})
+  ]));
+
+  window.chart = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        { label: "OLD", data: labels.map(l => comparisonData.OLD[l] || 0) },
+        { label: "NEW", data: labels.map(l => comparisonData.NEW[l] || 0) }
+      ]
+    }
+  });
+}
+
+/**************** EXPORT ****************/
+function buildExport(section, day, evaluator, tool, stats, isTest) {
+  EXPORT = {
+    meta: [
+      ["Section", section],
+      ["Day", day],
+      ["Evaluator", evaluator],
+      ["Tool", tool],
+      ["Date", nowDate()],
+      ["Time", nowTime()],
+      ["Mode", isTest ? "TEST" : "LIVE"]
+    ],
+    stats
+  };
+}
+
 function exportExcel() {
-  const section = document.getElementById("section").value || "";
-  const day = document.getElementById("day").value || "";
-  const table = document.getElementById("resultsTable");
+  if (!EXPORT) return alert("Nothing to export yet.");
 
-  if (!table || table.tBodies[0].rows.length === 0) {
-    alert("Nothing to export yet. Process a file first.");
-    return;
-  }
-
-  const rows = [];
-  // header
-  const thead = table.tHead.rows[0];
-  rows.push(Array.from(thead.cells).map(c => c.innerText));
-
-  // body
-  for (const r of table.tBodies[0].rows) {
-    rows.push(Array.from(r.cells).map(c => c.innerText));
-  }
-
-  // add section/day on top as metadata
-  const meta = [
-    ["Section", section],
-    ["Day", day],
-    []
-  ];
-
-  const ws = XLSX.utils.aoa_to_sheet([...meta, ...rows]);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "ScanResult");
-  XLSX.writeFile(wb, `Scan_${section || "Section"}_Day${day || "X"}.xlsx`);
+
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.aoa_to_sheet(EXPORT.meta),
+    "Metadata"
+  );
+
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.aoa_to_sheet([
+      ["Section","Day","Tool","Category","Mean %"],
+      ...EXPORT.stats
+    ]),
+    "Statistical_View"
+  );
+
+  XLSX.writeFile(wb, "3Cs_Evaluation.xlsx");
 }
 
-/* expose functions used by HTML buttons if needed (optional) */
+/**************** EXPOSE ****************/
 window.processFile = processFile;
 window.exportExcel = exportExcel;
 window.toggleMute = toggleMute;
+window.toggleEye = toggleEye;
+window.runTest = runTest;
