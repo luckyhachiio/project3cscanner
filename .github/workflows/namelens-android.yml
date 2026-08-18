@@ -6,6 +6,11 @@ on:
     paths:
       - 'namelens-android/**'
       - '.github/workflows/namelens-android.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'namelens-android/**'
+      - '.github/workflows/namelens-android.yml'
   workflow_dispatch:
 
 jobs:
